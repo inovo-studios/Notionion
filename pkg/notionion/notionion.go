@@ -15,9 +15,25 @@ const REQUEST = "Request"
 const RESPONSE = "Response"
 
 // RequestProxyPageChildren: Returns the children block of the Listener page
-func RequestProxyPageChildren(client *notionapi.Client, pageid string) (childrenBlocks notionapi.Blocks, err error) {
-	children, err := client.Block.GetChildren(context.Background(), notionapi.BlockID(pageid), nil)
-	return children.Results, err
+func RequestProxyPageChildren(client *notionapi.Client, pageid string) (notionapi.Blocks, error) {
+    if client == nil {
+        return nil, fmt.Errorf("notion client is nil")
+    }
+
+    if pageid == "" {
+        return nil, fmt.Errorf("page ID is empty")
+    }
+
+    children, err := client.Block.GetChildren(context.Background(), notionapi.BlockID(pageid), nil)
+    if err != nil {
+        return nil, err
+    }
+
+    if children == nil {
+        return nil, fmt.Errorf("children are nil")
+    }
+
+    return children.Results, nil
 }
 
 // RequestProxyStatus: request notion api to determine if proxy is active
