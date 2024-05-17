@@ -7,6 +7,7 @@ require (
     github.com/briandowns/spinner v1.23.0
     github.com/elazarl/goproxy v0.0.0-20221015165544-a0805db90819
     github.com/jomei/notionapi v1.11.0
+    github.com/gorilla/mux v1.8.0
 )
 
 require (
