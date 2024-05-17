@@ -19,79 +19,80 @@ func main() {
 	if len(flag.Args()) > 0 {
 		port = flag.Arg(0)
 	}
-	// integration token
+
+	// Integration token
 	token := os.Getenv("NOTION_TOKEN")
 	if token == "" {
-		fmt.Println("❌ Please set NOTION_TOKEN envvar with your integration token before launching notionion")
-		os.Exit(92)
+		log.Fatal("❌ Please set NOTION_TOKEN envvar with your integration token before launching notionion")
 	}
-	// page id
+
+	// Page URL
 	pageurl := os.Getenv("NOTION_PAGE_URL")
 	if pageurl == "" {
-		fmt.Println("❌ Please set NOTION_PAGE_URL envvar with your page id before launching notionion (CTRL+L on desktop app)")
-		os.Exit(92)
+		log.Fatal("❌ Please set NOTION_PAGE_URL envvar with your page id before launching notionion (CTRL+L on desktop app)")
 	}
 
+	// Extract Page ID
 	pageid := pageurl[strings.LastIndex(pageurl, "-")+1:]
 	if pageid == pageurl {
-		fmt.Println("❌ PAGEID was not found in NOTION_PAGEURL. Ensure the url is in the form of https://notion.so/[pagename]-[pageid]")
+		log.Fatal("❌ PAGEID was not found in NOTION_PAGEURL. Ensure the url is in the form of https://notion.so/[pagename]-[pageid]")
 	}
 
-	// CHECK PAGE CONTENT
+	// Initialize Notion client
 	client := notionapi.NewClient(notionapi.Token(token))
+	if client == nil {
+		log.Fatal("❌ Failed to initialize Notion client")
+	}
 
+	// Check Page Content
 	children, err := notionion.RequestProxyPageChildren(client, pageid)
 	if err != nil {
-		fmt.Println("Failed retrieving page children blocks:", err)
-		os.Exit(92)
+		log.Fatalf("Failed retrieving page children blocks: %v", err)
 	}
 
+	// Check Proxy Status
 	if active, err := notionion.GetProxyStatus(children); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	} else if active {
-		fmt.Println("📶 Proxy is active")
+		log.Println("📶 Proxy is active")
 	} else {
-		fmt.Println("📴 Proxy is inactive. Activate it by checking the \"OFF\" box")
+		log.Println("📴 Proxy is inactive. Activate it by checking the \"OFF\" box")
 	}
 
 	// Request section checks
 	if _, err := notionion.GetRequestBlock(children); err != nil {
-		fmt.Println("❌ Request block not found in the proxy page")
-		fmt.Println(err)
-		os.Exit(92)
+		log.Fatalf("❌ Request block not found in the proxy page: %v", err)
 	} else {
-		fmt.Println("➡️ Request block found")
-	}
-	if err := notionion.DisableRequestButtons(client, pageid); err != nil {
-		fmt.Println(err)
+		log.Println("➡️ Request block found")
 	}
 
+	// Disable Request Buttons
+	if err := notionion.DisableRequestButtons(client, pageid); err != nil {
+		log.Println(err)
+	}
+
+	// Get Request Code Block
 	codeReq, err := notionion.GetRequestCodeBlock(children)
 	if err != nil {
-		fmt.Println("❌ Request code block not found in the proxy page")
-		fmt.Println(err)
-		os.Exit(92)
+		log.Fatalf("❌ Request code block not found in the proxy page: %v", err)
 	}
 	notionion.ClearRequestCode(client, codeReq.ID)
 
 	// Response section checks
 	if _, err := notionion.GetResponseBlock(children); err != nil {
-		fmt.Println("❌ Response block not found in the proxy page")
-		fmt.Println(err)
-		os.Exit(92)
+		log.Fatalf("❌ Response block not found in the proxy page: %v", err)
 	} else {
-		fmt.Println("⬅️ Response block found")
+		log.Println("⬅️ Response block found")
 	}
 
+	// Get Response Code Block
 	codeResp, err := notionion.GetResponseCodeBlock(children)
 	if err != nil {
-		fmt.Println("❌ Response code block not found in the proxy page")
-		fmt.Println(err)
-		os.Exit(92)
+		log.Fatalf("❌ Response code block not found in the proxy page: %v", err)
 	}
 	notionion.ClearResponseCode(client, codeResp.ID)
 
-	//PROXY SECTION
+	// Proxy Section
 	proxy := goproxy.NewProxyHttpServer()
 	//proxy.Verbose = true
 
@@ -101,7 +102,6 @@ func main() {
 	// Response Handler
 	proxy.OnResponse().Do(notionion.ProxyResponseHTTPHandler(client, pageid, codeResp))
 
-	fmt.Printf("🧅 Launch notionion proxy on port %s !\n\n", port)
+	log.Printf("🧅 Launch notionion proxy on port %s!\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, proxy))
-
 }
