@@ -1,108 +1,59 @@
 package main
 
 import (
-    "flag"
+    "encoding/json"
     "fmt"
     "log"
     "net/http"
     "os"
-    "strings"
+    "bytes"
+    "io/ioutil"
 
-    "github.com/ariary/notionion/pkg/notionion"
-    "github.com/elazarl/goproxy"
-    "github.com/jomei/notionapi"
+    "github.com/gorilla/mux"
 )
 
+var notionToken = os.Getenv("NOTION_TOKEN")
+var notionDatabaseID = os.Getenv("NOTION_DATABASE_ID")
+
+func fetchDatabaseItems(w http.ResponseWriter, r *http.Request) {
+    url := fmt.Sprintf("https://api.notion.com/v1/databases/%s/query", notionDatabaseID)
+
+    client := &http.Client{}
+    req, err := http.NewRequest("POST", url, nil)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    req.Header.Add("Authorization", "Bearer "+notionToken)
+    req.Header.Add("Notion-Version", "2022-06-28")
+    req.Header.Add("Content-Type", "application/json")
+
+    res, err := client.Do(req)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    defer res.Body.Close()
+
+    body, err := ioutil.ReadAll(res.Body)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.Write(body)
+}
+
 func main() {
-    port := "8080"
-    flag.Parse()
-    if len(flag.Args()) > 0 {
-        port = flag.Arg(0)
-    }
-    // integration token
-    token := os.Getenv("NOTION_TOKEN")
-    if token == "" {
-        fmt.Println("❌ Please set NOTION_TOKEN envvar with your integration token before launching notionion")
-        os.Exit(92)
-    }
-    // page url
-    pageurl := os.Getenv("NOTION_PAGE_URL")
-    if pageurl == "" {
-        fmt.Println("❌ Please set NOTION_PAGE_URL envvar with your page id before launching notionion (CTRL+L on desktop app)")
-        os.Exit(92)
+    if notionToken == "" || notionDatabaseID == "" {
+        log.Fatal("Environment variables NOTION_TOKEN and NOTION_DATABASE_ID must be set")
     }
 
-    // Extract pageid from the URL
-    parts := strings.Split(pageurl, "-")
-    pageid := parts[len(parts)-1]
-    if pageid == pageurl {
-        fmt.Println("❌ PAGEID was not found in NOTION_PAGE_URL. Ensure the url is in the form of https://notion.so/[pagename]-[pageid]")
-    }
+    r := mux.NewRouter()
+    r.HandleFunc("/fetch-items", fetchDatabaseItems).Methods("GET")
 
-    // CHECK PAGE CONTENT
-    client := notionapi.NewClient(notionapi.Token(token))
-
-    children, err := notionion.RequestProxyPageChildren(client, pageid)
-    if err != nil {
-        fmt.Println("Failed retrieving page children blocks:", err)
-        os.Exit(92)
-    }
-
-    if active, err := notionion.GetProxyStatus(children); err != nil {
-        fmt.Println(err)
-    } else if active {
-        fmt.Println("📶 Proxy is active")
-    } else {
-        fmt.Println("📴 Proxy is inactive. Activate it by checking the \"OFF\" box")
-    }
-
-    // Request section checks
-    if _, err := notionion.GetRequestBlock(children); err != nil {
-        fmt.Println("❌ Request block not found in the proxy page")
-        fmt.Println(err)
-        os.Exit(92)
-    } else {
-        fmt.Println("➡️ Request block found")
-    }
-    if err := notionion.DisableRequestButtons(client, pageid); err != nil {
-        fmt.Println(err)
-    }
-
-    codeReq, err := notionion.GetRequestCodeBlock(children)
-    if err != nil {
-        fmt.Println("❌ Request code block not found in the proxy page")
-        fmt.Println(err)
-        os.Exit(92)
-    }
-    notionion.ClearRequestCode(client, codeReq.ID)
-
-    // Response section checks
-    if _, err := notionion.GetResponseBlock(children); err != nil {
-        fmt.Println("❌ Response block not found in the proxy page")
-        fmt.Println(err)
-        os.Exit(92)
-    } else {
-        fmt.Println("⬅️ Response block found")
-    }
-
-    codeResp, err := notionion.GetResponseCodeBlock(children)
-    if err != nil {
-        fmt.Println("❌ Response code block not found in the proxy page")
-        fmt.Println(err)
-        os.Exit(92)
-    }
-    notionion.ClearResponseCode(client, codeResp.ID)
-
-    // PROXY SECTION
-    proxy := goproxy.NewProxyHttpServer()
-    // proxy.Verbose = true
-
-    // Request HTTP Handler
-    proxy.OnRequest().Do(notionion.ProxyRequestHTTPHandler(client, pageid, codeReq, codeResp))
-
-    // Response Handler
-    proxy.OnResponse().Do(notionion.ProxyResponseHTTPHandler(client, pageid, codeResp))
-
-    fmt.Printf("🧅 Launch notionion proxy on port %s !\n\n", port)
-    log.Fatal(http.ListenAndServe(":"+port, proxy))
+    fmt.Println("Server is running on port 8080")
+    log.Fatal(http.ListenAndServe(":8080", r))
 }
