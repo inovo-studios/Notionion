@@ -15,7 +15,7 @@ const REQUEST = "Request"
 const RESPONSE = "Response"
 
 // RequestProxyPageChildren: Returns the children block of the Listener page
-func RequestProxyPageChildren(client *notionapi.Client, pageid string) (notionapi.Blocks, error) {
+func RequestProxyPageChildren(client *notionapi.Client, pageid string) ([]notionapi.Block, error) {
     if client == nil {
         return nil, fmt.Errorf("notion client is nil")
     }
